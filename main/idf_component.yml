@@ -1,0 +1,8 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: '>=4.1.0'
+
+  # https://components.espressif.com/components/espressif/mpu6050/versions/1.2.0/readme
+  mpu6050: ^1.1.1
