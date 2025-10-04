@@ -5,9 +5,9 @@
 #include "driver/i2c.h"
 #include "mpu6050.h"
 
-#ifdef CONFIG_THESHUTTER_PROV_TRANSPORT_BLE
+#ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
 #include "training.h"
-#endif /* CONFIG_THESHUTTER_PROV_TRANSPORT_BLE */
+#endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
 
 #define I2C_MASTER_SCL_IO           CONFIG_HABIZAP_I2C_MASTER_SCL
 #define I2C_MASTER_SDA_IO           CONFIG_HABIZAP_I2C_MASTER_SDA
@@ -167,9 +167,9 @@ void app_run(void) {
         ESP_LOGE(TAG, "MPU6050 init failed");
     }
 
-#ifdef CONFIG_THESHUTTER_PROV_TRANSPORT_BLE
+#ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
     start_data_collection();
-#endif /* CONFIG_THESHUTTER_PROV_TRANSPORT_BLE */
+#endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
 
     // Read sensor data in a loop
     while (1) {
