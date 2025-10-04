@@ -5,10 +5,15 @@
 #include "driver/i2c.h"
 #include "mpu6050.h"
 
-#define I2C_MASTER_SCL_IO           GPIO_NUM_5
-#define I2C_MASTER_SDA_IO           GPIO_NUM_4
+#ifdef CONFIG_THESHUTTER_PROV_TRANSPORT_BLE
+#include "training.h"
+#endif /* CONFIG_THESHUTTER_PROV_TRANSPORT_BLE */
+
+#define I2C_MASTER_SCL_IO           CONFIG_HABIZAP_I2C_MASTER_SCL
+#define I2C_MASTER_SDA_IO           CONFIG_HABIZAP_I2C_MASTER_SDA
 #define I2C_MASTER_NUM              I2C_NUM_0
-#define I2C_MASTER_FREQ_HZ          100000
+#define I2C_MASTER_FREQ_HZ          CONFIG_HABIZAP_I2C_MASTER_FREQUENCY
+#define MPU6050_WHO_AM_I 0x75
 
 static const char *TAG = "APP";
 static app_context_t g_ctx;
@@ -22,6 +27,27 @@ static void app_context_init() {
     memset(&g_ctx, 0, sizeof(g_ctx));
 }
 
+static uint8_t who_am_i_test(mpu6050_handle_t mpu) {
+    uint8_t whoami = 0;
+
+    // Read WHO_AM_I register
+    esp_err_t err = i2c_master_write_read_device(I2C_MASTER_NUM, MPU6050_I2C_ADDRESS,
+                                                 (uint8_t[]){MPU6050_WHO_AM_I}, 1,
+                                                 &whoami, 1, 1000 / portTICK_PERIOD_MS);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "MPU6050 WHO_AM_I = 0x%02X", whoami);
+        if (whoami == 0x68) {
+            ESP_LOGI(TAG, "MPU6050 is responding correctly!");
+        } else {
+            ESP_LOGW(TAG, "Unexpected WHO_AM_I value. Check wiring or AD0 pin.");
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to read WHO_AM_I: %s", esp_err_to_name(err));
+    }
+
+    return whoami;
+}
+
 static bool init_mpu() {
     ESP_LOGI(TAG, "Initializing MPU6050");
 
@@ -33,45 +59,42 @@ static bool init_mpu() {
         .scl_io_num = I2C_MASTER_SCL_IO,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
         .clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL,
     };
 
-    esp_err_t err = i2c_param_config(port, &conf);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_param_config failed: %s", esp_err_to_name(err));
-        return false;
-    }
+    ESP_ERROR_CHECK(i2c_param_config(port, &conf));
+    ESP_LOGI(TAG, "I2C configured on port %d (SDA=%d, SCL=%d)", port, conf.sda_io_num, conf.scl_io_num);
 
-    err = i2c_driver_install(port, conf.mode, 0, 0, 0);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "i2c_driver_install failed: %s", esp_err_to_name(err));
-        return false;
-    }
+    ESP_ERROR_CHECK(i2c_driver_install(port, conf.mode, 0, 0, 0));
+    ESP_LOGI(TAG, "I2C driver installed");
+
     // Create and configure MPU6050 using the library API used by the test
     mpu6050_handle_t mpu = mpu6050_create(port, MPU6050_I2C_ADDRESS);
     if (mpu == NULL) {
         ESP_LOGE(TAG, "mpu6050_create returned NULL");
         return false;
     }
+    ESP_LOGI(TAG, "MPU6050 initialized");
 
-    err = mpu6050_config(mpu, ACCE_FS_4G, GYRO_FS_500DPS);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mpu6050_config failed: %s", esp_err_to_name(err));
+    ESP_LOGI(TAG, "Performoing WHO_AM_I test");
+    uint8_t whoami = who_am_i_test(mpu);
+    if (whoami != MPU6050_WHO_AM_I_VAL) {
+        ESP_LOGE(TAG, "WHO_AM_I test failed (read 0x%02X, expected 0x%02X)", whoami, MPU6050_WHO_AM_I_VAL);
         mpu6050_delete(mpu);
         return false;
     }
+    ESP_LOGI(TAG, "WHO_AM_I test passed");
 
-    err = mpu6050_wake_up(mpu);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mpu6050_wake_up failed: %s", esp_err_to_name(err));
-        mpu6050_delete(mpu);
-        return false;
-    }
+    ESP_ERROR_CHECK(mpu6050_config(mpu, ACCE_FS_4G, GYRO_FS_500DPS));
+    ESP_LOGI(TAG, "MPU6050 configured (Acce=±4g, Gyro=±500°/s)");
+
+    ESP_ERROR_CHECK(mpu6050_wake_up(mpu));
+    ESP_LOGI(TAG, "MPU6050 woken up from sleep");
 
     // Verify WHO_AM_I
     uint8_t devid = 0;
-    err = mpu6050_get_deviceid(mpu, &devid);
+    esp_err_t err = mpu6050_get_deviceid(mpu, &devid);
     if (err != ESP_OK || devid != MPU6050_WHO_AM_I_VAL) {
         ESP_LOGE(TAG, "WHO_AM_I failed (err=%s, id=0x%02X)", esp_err_to_name(err), devid);
         mpu6050_delete(mpu);
@@ -143,6 +166,10 @@ void app_run(void) {
     if (!init_mpu()) {
         ESP_LOGE(TAG, "MPU6050 init failed");
     }
+
+#ifdef CONFIG_THESHUTTER_PROV_TRANSPORT_BLE
+    start_data_collection();
+#endif /* CONFIG_THESHUTTER_PROV_TRANSPORT_BLE */
 
     // Read sensor data in a loop
     while (1) {
