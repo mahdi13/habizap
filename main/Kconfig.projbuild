@@ -1,0 +1,23 @@
+menu "HabiZap Configuration"
+
+    config HABIZAP_I2C_MASTER_SCL
+        int "I2C SCL GPIO Num"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 5
+        help
+            GPIO number for I2C Master clock line.
+
+    config HABIZAP_I2C_MASTER_SDA
+        int "I2C SDA GPIO Num"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 4
+        help
+            GPIO number for I2C Master data line.
+
+    config HABIZAP_I2C_MASTER_FREQUENCY
+        int "I2C Master Frequency"
+        default 400000
+        help
+            I2C Speed of Master device.
+
+endmenu
