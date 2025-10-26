@@ -1,0 +1,7 @@
+﻿esptool~=4.7.0
+pytest~=7.4.4
+pytest-embedded==1.6.3
+pytest-embedded-idf==1.6.3
+pytest-embedded-serial==1.6.3
+pytest-embedded-serial-esp==1.6.3
+pytest-embedded-wokwi==1.6.3
