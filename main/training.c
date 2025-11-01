@@ -2,26 +2,17 @@
 
 #include "app.h"
 #include "esp_log.h"
-#include "mpu6050.h"
+#include "motion.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
 
 static const char *TAG = "TRAINING";
 
-#define SAMPLE_RATE_HZ 50
-#define SAMPLE_DELAY_MS (1000 / SAMPLE_RATE_HZ)
-
 #define SAMPLE_RATE_HZ   50
 #define SAMPLE_DELAY_MS  (1000 / SAMPLE_RATE_HZ)
 
 void start_data_collection(void) {
-    const mpu6050_handle_t mpu = app_ctx()->mpu;
-    if (mpu == NULL) {
-        ESP_LOGE(TAG, "MPU6050 handle is NULL. Call init_mpu() first.");
-        return;
-    }
-
     ESP_LOGI(TAG, "Starting data collection at %d Hz", SAMPLE_RATE_HZ);
 
     // Print CSV header once
@@ -29,20 +20,30 @@ void start_data_collection(void) {
     fflush(stdout);
 
     uint64_t start_time_ms = esp_timer_get_time() / 1000;
+    uint64_t last_warn_us = 0;           // rate-limit warnings
+    const uint64_t warn_interval_us = 2000000ULL; // 2 seconds
 
-    // Reuse these structs each loop instead of redeclaring
-    mpu6050_acce_value_t acce;
-    mpu6050_gyro_value_t gyro;
+    motion_sample_t sample;
 
     while (1) {
-        if (mpu6050_get_acce(mpu, &acce) != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to read accel");
-            vTaskDelay(pdMS_TO_TICKS(SAMPLE_DELAY_MS));
+        // If motion device isn't ready, pause sampling and warn infrequently
+        if (!app_ctx()->motion_ready) {
+            uint64_t now_us = esp_timer_get_time();
+            if (now_us - last_warn_us >= warn_interval_us) {
+                last_warn_us = now_us;
+                ESP_LOGW(TAG, "Motion not ready; data collection paused (will resume when sensor initializes)");
+            }
+            vTaskDelay(pdMS_TO_TICKS(250));
             continue;
         }
 
-        if (mpu6050_get_gyro(mpu, &gyro) != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to read gyro");
+        // Attempt to read a sample; on failure, warn infrequently
+        if (motion_read(&sample) != ESP_OK) {
+            uint64_t now_us = esp_timer_get_time();
+            if (now_us - last_warn_us >= warn_interval_us) {
+                last_warn_us = now_us;
+                ESP_LOGW(TAG, "Failed to read motion sample (will keep trying)");
+            }
             vTaskDelay(pdMS_TO_TICKS(SAMPLE_DELAY_MS));
             continue;
         }
@@ -52,8 +53,8 @@ void start_data_collection(void) {
         // Print in Edge Impulse CSV format
         printf("%llu,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
                (unsigned long long) timestamp,
-               acce.acce_x, acce.acce_y, acce.acce_z,
-               gyro.gyro_x, gyro.gyro_y, gyro.gyro_z);
+               sample.ax, sample.ay, sample.az,
+               sample.gx, sample.gy, sample.gz);
 
         fflush(stdout);
         vTaskDelay(pdMS_TO_TICKS(SAMPLE_DELAY_MS));
