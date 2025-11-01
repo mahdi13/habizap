@@ -158,29 +158,6 @@ static bool init_motion(void) {
     return true;
 }
 
-static bool init_heartbeat(void) {
-    ESP_LOGI(TAG, "Initializing heartbeat (MAX30102) on I2C bus");
-    if (!g_ctx.i2c_bus) {
-        ESP_LOGE(TAG, "I2C bus not initialized");
-        return false;
-    }
-
-
-    esp_err_t err = heartbeat_init(&g_ctx.hb_ctx, g_ctx.i2c_bus, 0);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "heartbeat_init failed: %s", esp_err_to_name(err));
-        g_ctx.heartbeat_ready = false;
-        return false;
-    }
-
-    // Start measurements
-    ESP_ERROR_CHECK(heartbeat_start(&g_ctx.hb_ctx));
-
-    g_ctx.heartbeat_ready = true;
-    ESP_LOGI(TAG, "heartbeat_init OK");
-    return true;
-}
-
 void app_run(void) {
     ESP_LOGI(TAG, "App run: starting provisioning and subsystem init");
 
@@ -202,9 +179,7 @@ void app_run(void) {
         ESP_LOGE(TAG, "I2C bus init failed");
         return;
     }
-    // i2c_bus_health_check();
-    // int devices = i2c_scan(g_ctx.i2c_bus);
-    // (void)devices;
+
     if (!init_motion()) {
         ESP_LOGW(TAG, "Motion init failed; will continue and retry later");
         ESP_LOGW(
@@ -212,35 +187,10 @@ void app_run(void) {
             "If you're on XIAO ESP32C6: verify SDA=D4(GPIO4), SCL=D5(GPIO5), solid 3.3V/GND to sensor, and add 4.7k-10k pull-ups to 3.3V if needed. Some breakout Qwiic/Grove cables route 5V; ensure your sensor runs at 3.3V.")
         ;
     }
-    if (!init_heartbeat()) {
-        ESP_LOGW(TAG, "Heartbeat init failed; continuing without MAX30102");
-    }
 
-    if (!g_ctx.hb_ctx.started) {
-    }
-
-    // #ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
-    //     start_data_collection();
-    // #endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
-
-    heartbeat_session_params_t heartbeat_session_params = {
-        .min_seconds = 10,
-        .max_seconds = 10,
-        .require_contact = true,
-        .poll_interval_ms = 50,
-    };
-    heartbeat_sample_t session_sample_result;
-    ESP_ERROR_CHECK(heartbeat_session_run(&g_ctx.hb_ctx, &heartbeat_session_params, &session_sample_result));
-    //
-    // Print detail result:
-    ESP_LOGI(TAG, "Heartbeat session result: contact=%d win=%u(%.1fs) HR=%.1f bpm%s SpO2=%.1f%%%s RED=%u IR=%u T=%.2fC",
-             (int)session_sample_result.contact,
-             (unsigned)session_sample_result.samples_in_window,
-             (double)session_sample_result.seconds_in_window,
-             session_sample_result.hr_bpm, session_sample_result.hr_valid ? "" : " (invalid)",
-             session_sample_result.spo2_pct, session_sample_result.spo2_valid ? "" : " (invalid)",
-             (unsigned)session_sample_result.red, (unsigned)session_sample_result.ir, session_sample_result.temp_c);
-
+    #ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
+        start_data_collection();
+    #endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
 
     // Read sensor data in a loop
     while (1) {
@@ -254,10 +204,6 @@ void app_run(void) {
                 ESP_LOGI(TAG, "Retrying motion init (timer)...");
                 (void) init_motion();
             }
-            if (!g_ctx.heartbeat_ready) {
-                ESP_LOGI(TAG, "Retrying heartbeat init (timer)...");
-                (void) init_heartbeat();
-            }
         }
 
         if (g_ctx.motion_ready) {
@@ -268,24 +214,6 @@ void app_run(void) {
                          m.ax, m.ay, m.az, m.gx, m.gy, m.gz, m.temp_c);
             } else {
                 ESP_LOGE(TAG, "motion_read failed: %s", esp_err_to_name(err_m));
-            }
-        }
-
-        if (g_ctx.heartbeat_ready) {
-            heartbeat_sample_t hb = {0};
-            esp_err_t err_h = heartbeat_read(&g_ctx.hb_ctx, &hb);
-            if (err_h == ESP_OK) {
-                ESP_LOGI(TAG, "Heartbeat: contact=%d win=%u(%.1fs) HR=%.1f bpm%s SpO2=%.1f%%%s RED=%u IR=%u T=%.2fC",
-                         (int)hb.contact,
-                         (unsigned)hb.samples_in_window,
-                         (double)hb.seconds_in_window,
-                         hb.hr_bpm, hb.hr_valid ? "" : " (invalid)",
-                         hb.spo2_pct, hb.spo2_valid ? "" : " (invalid)",
-                         (unsigned)hb.red, (unsigned)hb.ir, hb.temp_c);
-                // Uplink a compact heartbeat snapshot to the controller
-                (void)controller_send_heartbeat(hb.hr_bpm, hb.hr_valid, hb.spo2_pct, hb.spo2_valid, hb.temp_c);
-            } else {
-                ESP_LOGE(TAG, "heartbeat_read failed: %s", esp_err_to_name(err_h));
             }
         }
 
