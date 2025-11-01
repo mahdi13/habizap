@@ -18,6 +18,27 @@ menu "HabiZap Configuration"
         help
             I2C Speed of Master device.
 
+    # Vibration output configuration
+    config HABIZAP_VIBRATION_GPIO
+        int "Vibration GPIO"
+        default 2
+        help
+            GPIO used to drive the vibration motor/module (via transistor/driver).
+            Compatible with Grove and generic modules. Wire VCC and GND per module, and use this GPIO as SIG.
+
+    config HABIZAP_VIBRATION_ACTIVE_HIGH
+        bool "Vibration Active High"
+        default y
+        help
+            If enabled, driving the GPIO HIGH turns the motor ON. Disable for active-low drivers.
+
+    config HABIZAP_VIBRATION_QUEUE_LEN
+        int "Vibration Queue Length"
+        default 8
+        range 1 64
+        help
+            How many vibration pattern commands can be queued.
+
     # a config to set whether to run in training mode or not
     choice HABIZAP_TRAINING_MODE
         bool "Training Mode"
