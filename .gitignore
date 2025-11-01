@@ -19,3 +19,6 @@ dependencies.lock
 
 # dependencies installed by idf.py
 managed_components
+
+external
+trash
