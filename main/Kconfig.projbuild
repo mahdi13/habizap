@@ -119,6 +119,75 @@ menu "HabiZap Configuration"
             default 5000
             help
                 Period between background readings.
+        # Inference (TFLite Micro) configuration
+    menu "Inference"
+        config HABIZAP_INFER_ENABLE
+            bool "Enable Inference"
+            default y
+            help
+                Enable TensorFlow Lite Micro inference pipeline.
+
+        config HABIZAP_INFER_VERBOSE
+            bool "Verbose Inference Logs"
+            default y
+            help
+                Print detailed inference logs to serial.
+
+        config HABIZAP_INFER_WINDOW_SIZE
+            int "Prediction Window Size (N)"
+            range 1 64
+            default 5
+            help
+                Number of recent predictions to keep for smoothing.
+
+        config HABIZAP_INFER_POSITIVES_REQUIRED
+            int "Positives Required in Window"
+            range 1 64
+            default 3
+            help
+                How many positives within the window to trigger the event.
+
+        config HABIZAP_INFER_POSITIVE_CLASS_INDEX
+            int "Positive Class Index (-1 = top-1 any class)"
+            range -1 127
+            default 0
+            help
+                Class index considered positive; -1 means use whichever class is top-1.
+
+        config HABIZAP_INFER_THRESHOLD_PERCENT
+            int "Confidence Threshold (%)"
+            range 0 100
+            default 80
+            help
+                Minimum probability (%) to consider a prediction positive.
+
+        config HABIZAP_INFER_ARENA_SIZE
+            int "TFLM Tensor Arena Override (bytes, 0 = default)"
+            range 0 262144
+            default 0
+            help
+                Override tensor arena size; leave 0 to use model-provided default.
+
+        config HABIZAP_INFER_BUZZER_ENABLE
+            bool "Buzz on Trigger"
+            default y
+            help
+                Use vibration/buzzer to notify when trigger condition is met.
+
+        config HABIZAP_INFER_BUZZ_ON_MS
+            int "Buzz ON duration (ms)"
+            range 0 10000
+            default 200
+
+        config HABIZAP_INFER_BUZZ_OFF_MS
+            int "Buzz OFF duration (ms)"
+            range 0 10000
+            default 0
+
+        config HABIZAP_INFER_BUZZ_REPEAT
+            int "Buzz repeat count"
+            range 0 100
+            default 1
     endmenu
 
 endmenu
