@@ -162,9 +162,6 @@ void app_run(void) {
         ;
     }
 
-    #ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
-        start_data_collection();
-    #endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
     // Initialize vibration subsystem (GPIO output + worker task + queue)
     g_ctx.vibration = vibration_init();
     if (!g_ctx.vibration) {
@@ -174,6 +171,14 @@ void app_run(void) {
         (void) vibration_pulse(g_ctx.vibration, 100, 100, 2);
     }
 
+#ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
+    start_data_collection(
+        &(training_config_t){
+            .include_jerk = true,
+            .include_magnitudes = true,
+        }
+    );
+#endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
 
     // Read sensor data in a loop
     while (1) {
