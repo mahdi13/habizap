@@ -1,17 +1,19 @@
 #include "app.h"
 
 #include "esp_log.h"
-#include "esp_system.h"
 #include "esp_chip_info.h"
+#include "esp_err.h"
 
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "motion.h"
-// #include "heartbeat.h"
-#include "heartbeat/heartbeat.h"
-#include "heartbeat/session.h"
-#include "../trash/controller.h"
+#include "vibration.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+#include <string.h>
+#include <ctype.h>
 
 #ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
 #include "training.h"
@@ -25,28 +27,6 @@
 static const char *TAG = "APP";
 static app_context_t g_ctx;
 
-static void on_controller_cmd(const controller_cmd_t *cmd, void *user_ctx) {
-    (void)user_ctx;
-    switch (cmd->type) {
-        case CTRL_CMD_PING:
-            ESP_LOGI(TAG, "Controller CMD: PING");
-            break;
-        case CTRL_CMD_SET_CONFIG:
-            ESP_LOGI(TAG, "Controller CMD: SET_CONFIG len=%u", (unsigned)cmd->len);
-            break;
-        case CTRL_CMD_START_STREAM:
-            ESP_LOGI(TAG, "Controller CMD: START_STREAM");
-            break;
-        case CTRL_CMD_STOP_STREAM:
-            ESP_LOGI(TAG, "Controller CMD: STOP_STREAM");
-            break;
-        case CTRL_CMD_USER_ACTION:
-            ESP_LOGI(TAG, "Controller CMD: USER_ACTION len=%u", (unsigned)cmd->len);
-            break;
-        default:
-            break;
-    }
-}
 
 app_context_t *app_ctx(void) {
     return &g_ctx;
@@ -163,12 +143,6 @@ void app_run(void) {
 
     app_context_init();
 
-    // Initialize controller (communication module)
-    ESP_ERROR_CHECK(controller_init());
-    ESP_ERROR_CHECK(controller_register_command_handler(on_controller_cmd, NULL));
-    ESP_ERROR_CHECK(controller_start());
-    (void)controller_request_provisioning();
-
     // Log chip info to help debug board-specific issues (e.g., XIAO ESP32C6 vs ESP32-C3)
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
@@ -191,6 +165,15 @@ void app_run(void) {
     #ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
         start_data_collection();
     #endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
+    // Initialize vibration subsystem (GPIO output + worker task + queue)
+    g_ctx.vibration = vibration_init();
+    if (!g_ctx.vibration) {
+        ESP_LOGE(TAG, "Vibration subsystem init failed");
+    } else {
+        // Optional: a short startup buzz pattern (100ms on, 100ms off, twice)
+        (void) vibration_pulse(g_ctx.vibration, 100, 100, 2);
+    }
+
 
     // Read sensor data in a loop
     while (1) {

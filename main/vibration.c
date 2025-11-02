@@ -1,6 +1,8 @@
 #include "vibration.h"
 
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include <string.h>
@@ -8,6 +10,7 @@
 #include <ctype.h>
 #include "driver/gpio.h"
 
+static const char *TAG = "VIB";
 
 #ifndef CONFIG_HABIZAP_VIBRATION_GPIO
 #define CONFIG_HABIZAP_VIBRATION_GPIO 2
@@ -27,12 +30,23 @@ typedef struct {
     size_t count; // number of entries
 } vib_cmd_t;
 
-static inline void vib_gpio_set(bool on) {
-    bool level = g_ctx.vibration.active_high ? on : !on;
-    gpio_set_level(g_ctx.vibration.gpio, level);
+// Internal vibration context definition (opaque to users)
+struct vibration_ctx_t {
+    QueueHandle_t queue;          // queue of commands (each command is a pattern)
+    TaskHandle_t task;            // worker task processing the queue
+    int gpio;                     // GPIO controlling the motor/driver
+    bool active_high;             // true if HIGH = ON
+    int default_on_ms;            // defaults for convenience helpers
+    int default_off_ms;
+    size_t max_items;             // queue length
+};
+
+static inline void vib_gpio_set(vibration_ctx_t *ctx, bool on) {
+    bool level = ctx->active_high ? on : !on;
+    gpio_set_level(ctx->gpio, level);
 }
 
-static void vib_process_pattern(const vib_cmd_t *cmd) {
+static void vib_process_pattern(vibration_ctx_t *ctx, const vib_cmd_t *cmd) {
     if (!cmd || !cmd->dur_ms || cmd->count == 0) return;
     // Start with ON duration at index 0
     bool on = true;
@@ -43,27 +57,27 @@ static void vib_process_pattern(const vib_cmd_t *cmd) {
             on = !on;
             continue;
         }
-        vib_gpio_set(on);
+        vib_gpio_set(ctx, on);
         vTaskDelay(pdMS_TO_TICKS(d));
         on = !on;
     }
     // Ensure motor is OFF at end
-    vib_gpio_set(false);
+    vib_gpio_set(ctx, false);
 }
 
 static void vib_task(void *arg) {
-    (void) arg;
+    vibration_ctx_t *ctx = (vibration_ctx_t *)arg;
     vib_cmd_t cmd;
     while (1) {
-        if (xQueueReceive(g_ctx.vibration.queue, &cmd, portMAX_DELAY) == pdTRUE) {
-            vib_process_pattern(&cmd);
+        if (xQueueReceive(ctx->queue, &cmd, portMAX_DELAY) == pdTRUE) {
+            vib_process_pattern(ctx, &cmd);
             // free resources
             if (cmd.dur_ms) free(cmd.dur_ms);
         }
     }
 }
 
-static bool vibration_gpio_init(void) {
+static bool vibration_gpio_init(vibration_ctx_t *ctx) {
     int gpio_num = CONFIG_HABIZAP_VIBRATION_GPIO;
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << gpio_num),
@@ -78,46 +92,52 @@ static bool vibration_gpio_init(void) {
         return false;
     }
     // Default OFF
-    g_ctx.vibration.gpio = gpio_num;
-    g_ctx.vibration.active_high = CONFIG_HABIZAP_VIBRATION_ACTIVE_HIGH;
-    vib_gpio_set(false);
+    ctx->gpio = gpio_num;
+    ctx->active_high = CONFIG_HABIZAP_VIBRATION_ACTIVE_HIGH;
+    vib_gpio_set(ctx, false);
     return true;
 }
 
-bool vibration_init(void) {
-    if (g_ctx.vibration.queue) return true; // already inited
-    if (!vibration_gpio_init()) return false;
+vibration_ctx_t *vibration_init(void) {
+    vibration_ctx_t *ctx = (vibration_ctx_t *)calloc(1, sizeof(vibration_ctx_t));
+    if (!ctx) return NULL;
+
+    if (!vibration_gpio_init(ctx)) {
+        free(ctx);
+        return NULL;
+    }
 
     size_t qlen = CONFIG_HABIZAP_VIBRATION_QUEUE_LEN;
-    g_ctx.vibration.queue = xQueueCreate(qlen, sizeof(vib_cmd_t));
-    if (!g_ctx.vibration.queue) {
+    ctx->queue = xQueueCreate(qlen, sizeof(vib_cmd_t));
+    if (!ctx->queue) {
         ESP_LOGE(TAG, "Failed to create vibration queue");
-        return false;
+        free(ctx);
+        return NULL;
     }
-    g_ctx.vibration.max_items = qlen;
-    g_ctx.vibration.default_on_ms = 100;
-    g_ctx.vibration.default_off_ms = 100;
+    ctx->max_items = qlen;
+    ctx->default_on_ms = 100;
+    ctx->default_off_ms = 100;
 
-    BaseType_t ok = xTaskCreate(vib_task, "vib_task", 2048, NULL, tskIDLE_PRIORITY + 2, &g_ctx.vibration.task);
+    BaseType_t ok = xTaskCreate(vib_task, "vib_task", 2048, ctx, tskIDLE_PRIORITY + 2, &ctx->task);
     if (ok != pdPASS) {
         ESP_LOGE(TAG, "Failed to create vibration task");
-        vQueueDelete(g_ctx.vibration.queue);
-        g_ctx.vibration.queue = NULL;
-        return false;
+        vQueueDelete(ctx->queue);
+        free(ctx);
+        return NULL;
     }
-    ESP_LOGI(TAG, "Vibration subsystem initialized on GPIO %d (active_%s), queue=%u", g_ctx.vibration.gpio,
-             g_ctx.vibration.active_high ? "high" : "low", (unsigned) qlen);
-    return true;
+    ESP_LOGI(TAG, "Vibration subsystem initialized on GPIO %d (active_%s), queue=%u", ctx->gpio,
+             ctx->active_high ? "high" : "low", (unsigned) qlen);
+    return ctx;
 }
 
-static bool vib_enqueue_copy(const int *dur_ms, size_t count) {
-    if (!g_ctx.vibration.queue || !dur_ms || count == 0) return false;
+static bool vib_enqueue_copy(vibration_ctx_t *ctx, const int *dur_ms, size_t count) {
+    if (!ctx || !ctx->queue || !dur_ms || count == 0) return false;
     vib_cmd_t cmd = {0};
     cmd.count = count;
     cmd.dur_ms = (int *) malloc(count * sizeof(int));
     if (!cmd.dur_ms) return false;
     memcpy(cmd.dur_ms, dur_ms, count * sizeof(int));
-    if (xQueueSendToBack(g_ctx.vibration.queue, &cmd, 0) == pdTRUE) {
+    if (xQueueSendToBack(ctx->queue, &cmd, 0) == pdTRUE) {
         return true;
     } else {
         free(cmd.dur_ms);
@@ -125,8 +145,8 @@ static bool vib_enqueue_copy(const int *dur_ms, size_t count) {
     }
 }
 
-bool vibration_enqueue_pattern_ms(const int *durations_ms, size_t count) {
-    return vib_enqueue_copy(durations_ms, count);
+bool vibration_enqueue_pattern_ms(vibration_ctx_t *ctx, const int *durations_ms, size_t count) {
+    return vib_enqueue_copy(ctx, durations_ms, count);
 }
 
 static bool parse_ints_from_str(const char *s, int **out_arr, size_t *out_count) {
@@ -176,16 +196,16 @@ static bool parse_ints_from_str(const char *s, int **out_arr, size_t *out_count)
     return true;
 }
 
-bool vibration_enqueue_pattern_str(const char *pattern_str) {
+bool vibration_enqueue_pattern_str(vibration_ctx_t *ctx, const char *pattern_str) {
     int *arr = NULL;
     size_t n = 0;
     if (!parse_ints_from_str(pattern_str, &arr, &n)) return false;
-    bool ok = vib_enqueue_copy(arr, n);
+    bool ok = vib_enqueue_copy(ctx, arr, n);
     free(arr);
     return ok;
 }
 
-bool vibration_pulse(int on_ms, int off_ms, int repeat) {
+bool vibration_pulse(vibration_ctx_t *ctx, int on_ms, int off_ms, int repeat) {
     if (on_ms < 0) on_ms = 0;
     if (off_ms < 0) off_ms = 0;
     if (repeat < 1) repeat = 1;
@@ -196,7 +216,7 @@ bool vibration_pulse(int on_ms, int off_ms, int repeat) {
         arr[i * 2] = on_ms;
         arr[i * 2 + 1] = off_ms;
     }
-    bool ok = vib_enqueue_copy(arr, n);
+    bool ok = vib_enqueue_copy(ctx, arr, n);
     free(arr);
     return ok;
 }
