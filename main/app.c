@@ -9,6 +9,7 @@
 #include "esp_timer.h"
 #include "motion.h"
 #include "vibration.h"
+#include "battery.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -142,6 +143,13 @@ void app_run(void) {
     ESP_LOGI(TAG, "App run: starting provisioning and subsystem init");
 
     app_context_init();
+
+    // Initialize and start battery monitoring task
+    if (battery_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Battery init failed");
+    } else {
+        (void) battery_start();
+    }
 
     // Log chip info to help debug board-specific issues (e.g., XIAO ESP32C6 vs ESP32-C3)
     esp_chip_info_t chip_info;

@@ -54,4 +54,71 @@ menu "HabiZap Configuration"
     endchoice
 
 
+    # Battery monitoring configuration
+    menu "Battery Monitoring"
+        config HABIZAP_BATTERY_ENABLE
+            bool "Enable Battery Monitoring"
+            default y
+            help
+                Enable background task that reads ADC and estimates battery percentage.
+
+        config HABIZAP_BATTERY_ADC_UNIT
+            int "ADC Unit (1 or 2)"
+            range 1 2
+            default 1
+            help
+                Select ADC unit to use.
+
+        config HABIZAP_BATTERY_ADC_CHANNEL
+            int "ADC Channel Number"
+            range 0 9
+            default 0
+            help
+                ADC channel index for the selected unit.
+
+        config HABIZAP_BATTERY_ADC_ATTEN_DB
+            int "ADC Attenuation (dB)"
+            default 11
+            help
+                ADC attenuation in dB. Common values: 0, 2 (2.5dB), 6, 11.
+
+        config HABIZAP_BATTERY_DIVIDER_R1_OHMS
+            int "Divider R1 (ohms)"
+            default 100000
+            help
+                Upper resistor from battery+ to sense node.
+
+        config HABIZAP_BATTERY_DIVIDER_R2_OHMS
+            int "Divider R2 (ohms)"
+            default 100000
+            help
+                Lower resistor from sense node to GND.
+
+        config HABIZAP_BATTERY_EMPTY_MV
+            int "Battery Empty Voltage (mV)"
+            default 3300
+            help
+                Voltage considered 0%%. For single-cell LiPo usually ~3300mV under light load.
+
+        config HABIZAP_BATTERY_FULL_MV
+            int "Battery Full Voltage (mV)"
+            default 4200
+            help
+                Voltage considered 100%%. For single-cell LiPo 4.2V.
+
+        config HABIZAP_BATTERY_SAMPLE_COUNT
+            int "Samples per Reading"
+            range 1 128
+            default 16
+            help
+                Number of ADC samples to average each period.
+
+        config HABIZAP_BATTERY_PERIOD_MS
+            int "Reading Period (ms)"
+            range 100 600000
+            default 5000
+            help
+                Period between background readings.
+    endmenu
+
 endmenu
