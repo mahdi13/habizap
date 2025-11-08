@@ -185,7 +185,12 @@ static int mv_to_percent(int batt_mv) {
     if (batt_mv >= full_mv) return 100;
     // Simple linear mapping. For better accuracy, replace with LUT and piecewise curve.
     int pct = (int) ((batt_mv - empty_mv) * 100 / (full_mv - empty_mv));
-    if (pct < 0) pct = 0; if (pct > 100) pct = 100;
+    if (pct < 0) {
+        pct = 0;
+    }
+    if (pct > 100) {
+        pct = 100;
+    }
     return pct;
 }
 
