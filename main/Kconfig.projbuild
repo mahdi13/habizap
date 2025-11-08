@@ -121,4 +121,50 @@ menu "HabiZap Configuration"
                 Period between background readings.
     endmenu
 
+    # ML configuration
+    menu "HabiZap ML (Edge Impulse)"
+
+        config HABIZAP_ML_QUEUE_LEN
+            int "Inference queue length"
+            range 1 32
+            default 4
+            help
+                Number of pending inference messages in the queue.
+
+        config HABIZAP_ML_USE_CONTINUOUS
+            bool "Use continuous classifier (sliding window)"
+            default y
+            help
+                Enable Edge Impulse run_classifier_continuous() with a sliding window.
+                When disabled, full frames must be submitted to run_classifier().
+
+        config HABIZAP_ML_POSITIVE_THRESHOLD
+            float "Positive threshold"
+            default 0.6
+            help
+                Minimum probability for the positive class to flag is_positive.
+
+        config HABIZAP_ML_POSITIVE_LABEL
+            string "Positive label name"
+            default "positive"
+            help
+                Name of the label that should be treated as the positive class.
+                Must match one of ei_classifier_inferencing_categories[].
+
+        config HABIZAP_ML_TASK_STACK
+            int "Inference task stack (bytes)"
+            default 6144
+            help
+                Stack size used by the inference task.
+
+        config HABIZAP_ML_TASK_PRIORITY
+            int "Inference task priority"
+            range 1 10
+            default 5
+            help
+                FreeRTOS priority for the inference task (higher = more priority).
+
+    endmenu
+
+
 endmenu

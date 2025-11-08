@@ -12,6 +12,7 @@
 #include "battery.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "inference.h"
 
 #include <string.h>
 #include <ctype.h>
@@ -27,6 +28,7 @@
 
 static const char *TAG = "APP";
 static app_context_t g_ctx;
+static inference_handle_t *s_inf = NULL;
 
 
 app_context_t *app_ctx(void) {
@@ -171,6 +173,13 @@ void app_run(void) {
         ;
     }
 
+    // Initialize Edge Impulse inference engine (continuous mode by default)
+    if (!inference_create(NULL, &s_inf)) {
+        ESP_LOGE(TAG, "Inference init failed");
+    } else {
+        ESP_LOGI(TAG, "Inference initialized");
+    }
+
     // Initialize vibration subsystem (GPIO output + worker task + queue)
     g_ctx.vibration = vibration_init();
     if (!g_ctx.vibration) {
@@ -207,14 +216,29 @@ void app_run(void) {
             motion_sample_t m = {0};
             esp_err_t err_m = motion_read(&m);
             if (err_m == ESP_OK) {
+                // Example: feed only accelerometer axes (ax, ay, az) as samples
+                float samples[3] = { m.ax, m.ay, m.az };
+                if (s_inf) (void) inference_feed_samples(s_inf, samples, 3);
+
+                // Optionally log raw motion for debugging
                 ESP_LOGI(TAG, "Accel[g]: x=%.3f y=%.3f z=%.3f | Gyro[dps]: x=%.3f y=%.3f z=%.3f | Temp[C]=%.2f",
                          m.ax, m.ay, m.az, m.gx, m.gy, m.gz, m.temp_c);
+
+                // Poll latest inference result (non-blocking)
+                if (s_inf) {
+                    inference_result_t r;
+                    if (inference_get_latest(s_inf, &r)) {
+                        ESP_LOGI(TAG, "ML: idx=%d score=%.3f positive=%d t=%llums",
+                                 r.top_index, r.top_score, (int)r.is_positive,
+                                 (unsigned long long)r.timestamp_ms);
+                    }
+                }
             } else {
                 ESP_LOGE(TAG, "motion_read failed: %s", esp_err_to_name(err_m));
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     // Not reached
