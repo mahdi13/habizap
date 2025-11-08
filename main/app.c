@@ -20,8 +20,8 @@
 #include "training.h"
 #endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
 
-#define I2C_MASTER_SCL_IO           23
-#define I2C_MASTER_SDA_IO           22
+#define I2C_MASTER_SCL_IO           CONFIG_HABIZAP_I2C_MASTER_SCL
+#define I2C_MASTER_SDA_IO           CONFIG_HABIZAP_I2C_MASTER_SDA
 #define I2C_MASTER_PORT             I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ          CONFIG_HABIZAP_I2C_MASTER_FREQUENCY
 
@@ -39,7 +39,8 @@ static void app_context_init() {
 }
 
 static bool init_i2c_bus(void) {
-    ESP_LOGI(TAG, "Initializing I2C bus (new driver)");
+    ESP_LOGI(TAG, "Initializing I2C bus (new driver) on port %d, SDA=%d, SCL=%d, freq=%d Hz",
+             I2C_MASTER_PORT, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
 
     i2c_master_bus_config_t bus_cfg = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
