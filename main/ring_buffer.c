@@ -1,7 +1,5 @@
 #include "ring_buffer.h"
-
 #include <string.h>
-#include "freertos/semphr.h"
 
 void motion_buffer_init(motion_buffer_t *buf, motion_sample_t *storage, int capacity) {
     buf->data = storage;

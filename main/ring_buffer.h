@@ -1,6 +1,6 @@
 #pragma once
 
-#include "freertos/semphr.h"
+#include "freertos/FreeRTOS.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus

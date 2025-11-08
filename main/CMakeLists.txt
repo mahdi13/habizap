@@ -51,7 +51,7 @@ list(APPEND SOURCE_FILES ${S_FILES_ESP_DSP})
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/../tflite-model
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
-idf_component_register(SRCS "main.c" "app.c" "training.c" "motion.c" "vibration.c" "battery.c" "inference.cpp"
+idf_component_register(SRCS "main.c" "app.c" "training.c" "motion.c" "vibration.c" "battery.c" "ring_buffer.c" "inference.cpp"
         ${SOURCE_FILES} ${MODEL_FILES} ${CC_FILES} ${C_FILES}
         ${S_FILES_ESP_NN} ${S_FILES_ESP_DSP}
 

@@ -17,18 +17,22 @@
 #include <string.h>
 #include <ctype.h>
 
-#ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
+#ifdef HABIZAP_RUNNING_MODE_TRAINING
 #include "training.h"
-#endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
+#endif /* HABIZAP_RUNNING_MODE_TRAINING */
 
 #define I2C_MASTER_SCL_IO           CONFIG_HABIZAP_I2C_MASTER_SCL
 #define I2C_MASTER_SDA_IO           CONFIG_HABIZAP_I2C_MASTER_SDA
 #define I2C_MASTER_PORT             I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ          CONFIG_HABIZAP_I2C_MASTER_FREQUENCY
 
+#define INFERENCE_BUFFER_SIZE 256
+static motion_sample_t buffer_storage[INFERENCE_BUFFER_SIZE];
+
 static const char *TAG = "APP";
 static app_context_t g_ctx;
 static inference_handle_t *s_inf = NULL;
+static motion_buffer_t motion_buffer;
 
 
 app_context_t *app_ctx(void) {
@@ -189,14 +193,14 @@ void app_run(void) {
         (void) vibration_pulse(g_ctx.vibration, 100, 100, 2);
     }
 
-#ifdef CONFIG_HABIZAP_TRAINING_MODE_ON
+#ifdef HABIZAP_RUNNING_MODE_TRAINING
     start_data_collection(
         &(training_config_t){
             .include_jerk = true,
             .include_magnitudes = true,
         }
     );
-#endif /* CONFIG_HABIZAP_TRAINING_MODE_ON */
+#endif /* HABIZAP_RUNNING_MODE_TRAINING */
 
     // Read sensor data in a loop
     while (1) {

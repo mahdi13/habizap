@@ -251,3 +251,20 @@ void motion_deinit(void) {
         s_mpu = NULL;
     }
 }
+
+static void motion_task(void *arg) {
+    motion_buffer_t *buf = (motion_buffer_t *) arg;
+    motion_sample_t s;
+
+    while (true) {
+        if (motion_read(&s) == ESP_OK) {
+            motion_buffer_push(buf, &s);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz
+    }
+}
+
+esp_err_t motion_task_start(motion_buffer_t *buf) {
+    xTaskCreate(motion_task, "motion_task", 4096, buf, 5, NULL);
+    return ESP_OK;
+}

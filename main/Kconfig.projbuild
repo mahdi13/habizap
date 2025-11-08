@@ -40,17 +40,17 @@ menu "HabiZap Configuration"
             How many vibration pattern commands can be queued.
 
     # a config to set whether to run in training mode or not
-    choice HABIZAP_TRAINING_MODE
-        bool "Training Mode"
-        default HABIZAP_TRAINING_MODE_ON
+    choice HABIZAP_RUNNING_MODE
+        bool "Running Mode (Inference or Training)"
+        default HABIZAP_RUNNING_MODE_TRAINING
         help
-            Enable or disable training mode.
-            In training mode, the device will not perform its normal functions,
-            but will instead allow the user to train it to recognize new gestures.
-        config HABIZAP_TRAINING_MODE_ON
-            bool "Enable Training Mode"
-        config HABIZAP_TRAINING_MODE_OFF
-            bool "Disable Training Mode"
+            Select whether the device runs in Training Mode (collecting data) or Inference Mode (making predictions).
+            If Training Mode is selected, the device will collect and store sensor data for later use in model training.
+            If Inference Mode is selected, the device will load a pre-trained model and make predictions based on incoming sensor data.
+        config HABIZAP_RUNNING_MODE_TRAINING
+            bool "Run Training Mode"
+        config HABIZAP_RUNNING_MODE_INFERENCE
+            bool "Run Inference Mode"
     endchoice
 
 
