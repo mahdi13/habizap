@@ -30,6 +30,10 @@ bool motion_buffer_pop(motion_buffer_t *buf, motion_sample_t *out);
 
 int motion_buffer_count(motion_buffer_t *buf);
 
+int motion_buffer_pop_many(motion_buffer_t *buf, motion_sample_t *out, int count);
+
+int motion_buffer_peek_latest(motion_buffer_t *buf, motion_sample_t *out, int count);
+
 #ifdef __cplusplus
 }
 #endif
