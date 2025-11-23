@@ -10,6 +10,7 @@
 #include "motion.h"
 #include "vibration.h"
 #include "battery.h"
+#include "ring_buffer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "inference.h"
@@ -31,7 +32,6 @@ static motion_sample_t buffer_storage[INFERENCE_BUFFER_SIZE];
 
 static const char *TAG = "APP";
 static app_context_t g_ctx;
-static inference_handle_t *s_inf = NULL;
 static motion_buffer_t motion_buffer;
 
 
@@ -146,6 +146,20 @@ static bool init_motion(void) {
     return true;
 }
 
+static void start_inference(void) {
+    ESP_LOGI(TAG, "Initializing the motion buffer...");
+    motion_buffer_init(&motion_buffer, buffer_storage, INFERENCE_BUFFER_SIZE);
+    ESP_LOGI(TAG, "Inference buffer initialized");
+
+    ESP_LOGI(TAG, "Starting motion task...");
+    motion_task_start(&motion_buffer);
+    ESP_LOGI(TAG, "Motion task started");
+
+    ESP_LOGI(TAG, "Starting inference task...");
+    inference_task_start(&motion_buffer);
+    ESP_LOGI(TAG, "Inference task started");
+}
+
 void app_run(void) {
     ESP_LOGI(TAG, "App run: starting provisioning and subsystem init");
 
@@ -177,13 +191,6 @@ void app_run(void) {
         ;
     }
 
-    // Initialize Edge Impulse inference engine (continuous mode by default)
-    if (!inference_create(NULL, &s_inf)) {
-        ESP_LOGE(TAG, "Inference init failed");
-    } else {
-        ESP_LOGI(TAG, "Inference initialized");
-    }
-
     // Initialize vibration subsystem (GPIO output + worker task + queue)
     g_ctx.vibration = vibration_init();
     if (!g_ctx.vibration) {
@@ -194,6 +201,7 @@ void app_run(void) {
     }
 
 #ifdef HABIZAP_RUNNING_MODE_TRAINING
+    ESP_LOGI(TAG, "Running app in training mode...");
     start_data_collection(
         &(training_config_t){
             .include_jerk = true,
@@ -202,48 +210,14 @@ void app_run(void) {
     );
 #endif /* HABIZAP_RUNNING_MODE_TRAINING */
 
-    // Read sensor data in a loop
-    while (1) {
-        // Motion retry driven by timer to reduce log spam
-        if (g_ctx.motion_retry_due) {
-            g_ctx.motion_retry_due = false; // consume the trigger
-            ESP_LOGI(TAG, "Retry tick: rescanning I2C bus and retrying inits as needed...");
-            int found = i2c_scan(g_ctx.i2c_bus);
-            (void) found;
-            if (!g_ctx.motion_ready) {
-                ESP_LOGI(TAG, "Retrying motion init (timer)...");
-                (void) init_motion();
-            }
-        }
 
-        if (g_ctx.motion_ready) {
-            motion_sample_t m = {0};
-            esp_err_t err_m = motion_read(&m);
-            if (err_m == ESP_OK) {
-                // Example: feed only accelerometer axes (ax, ay, az) as samples
-                float samples[3] = { m.ax, m.ay, m.az };
-                if (s_inf) (void) inference_feed_samples(s_inf, samples, 3);
+#ifdef CONFIG_HABIZAP_RUNNING_MODE_INFERENCE
+    ESP_LOGI(TAG, "Running app in inference mode...");
+    start_inference();
+#endif /* CONFIG_HABIZAP_RUNNING_MODE_INFERENCE */
 
-                // Optionally log raw motion for debugging
-                ESP_LOGI(TAG, "Accel[g]: x=%.3f y=%.3f z=%.3f | Gyro[dps]: x=%.3f y=%.3f z=%.3f | Temp[C]=%.2f",
-                         m.ax, m.ay, m.az, m.gx, m.gy, m.gz, m.temp_c);
 
-                // Poll latest inference result (non-blocking)
-                if (s_inf) {
-                    inference_result_t r;
-                    if (inference_get_latest(s_inf, &r)) {
-                        ESP_LOGI(TAG, "ML: idx=%d score=%.3f positive=%d t=%llums",
-                                 r.top_index, r.top_score, (int)r.is_positive,
-                                 (unsigned long long)r.timestamp_ms);
-                    }
-                }
-            } else {
-                ESP_LOGE(TAG, "motion_read failed: %s", esp_err_to_name(err_m));
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-    // Not reached
 }
